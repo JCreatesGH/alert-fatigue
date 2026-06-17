@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
-from alertfatigue import (load_alerts, noisiest, flapping_rules, mtta,
-                          self_resolve_rate, recommendations, summary)
+from alertfatigue import (load_alerts, noisiest, flapping_rules, mtta, mttr,
+                          ack_rate, self_resolve_rate, recommendations, summary)
 
 BASE = datetime(2026, 6, 1, 0, 0, tzinfo=timezone.utc)
 
@@ -53,3 +53,21 @@ def test_summary():
     alerts = load_alerts([make("A", 0, acked_min=1), make("B", 5)])
     s = summary(alerts)
     assert s["total"] == 2 and s["unique_rules"] == 2
+    assert "mttr_s" in s and "ack_rate" in s
+
+
+def test_mttr_and_ack_rate():
+    alerts = load_alerts([
+        make("A", 0, resolved_min=2, acked_min=1),   # 120s to resolve, acked
+        make("B", 10, resolved_min=14),               # 240s to resolve, not acked
+    ])
+    assert mttr(alerts) == 180.0          # (120 + 240) / 2
+    assert ack_rate(alerts) == 0.5        # 1 of 2 acked
+
+
+def test_load_alerts_skips_records_without_open_time():
+    alerts = load_alerts([
+        {"rule": "A", "opened_at": at(0).isoformat()},
+        {"rule": "B"},                                 # no opened_at / ts -> skipped
+    ])
+    assert [a.rule for a in alerts] == ["A"]

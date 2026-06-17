@@ -35,6 +35,19 @@ def mtta(alerts: List[Alert]) -> float:
     return round(sum(lats) / len(lats), 1) if lats else 0.0
 
 
+def mttr(alerts: List[Alert]) -> float:
+    """Mean time to resolve, in seconds (only resolved alerts)."""
+    durs = [a.duration_s for a in alerts if a.duration_s is not None]
+    return round(sum(durs) / len(durs), 1) if durs else 0.0
+
+
+def ack_rate(alerts: List[Alert]) -> float:
+    """Fraction of alerts a human acknowledged (engagement / signal)."""
+    if not alerts:
+        return 0.0
+    return round(sum(1 for a in alerts if a.was_acked) / len(alerts), 3)
+
+
 def self_resolve_rate(alerts: List[Alert], quick_s: float = 300) -> float:
     """Fraction of alerts that resolved quickly and were never acked — i.e. noise
     that paged someone for nothing."""
@@ -69,6 +82,8 @@ def summary(alerts: List[Alert]) -> Dict[str, object]:
         "total": len(alerts),
         "unique_rules": len({a.rule for a in alerts}),
         "mtta_s": mtta(alerts),
+        "mttr_s": mttr(alerts),
+        "ack_rate": ack_rate(alerts),
         "self_resolve_rate": self_resolve_rate(alerts),
         "flapping_rules": len(flapping_rules(alerts)),
         "noisiest": noisiest(alerts, 5),

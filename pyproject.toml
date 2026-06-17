@@ -12,6 +12,12 @@ requires-python = ">=3.8"
 license = { text = "MIT" }
 keywords = ["alerting", "sre", "on-call", "pagerduty", "observability", "noise"]
 
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+alertfatigue = "alertfatigue.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

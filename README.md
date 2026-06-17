@@ -22,7 +22,8 @@ from alertfatigue import load_alerts, summary, recommendations
 alerts = load_alerts(history)   # [{rule, opened_at, resolved_at?, acked_at?}, ...]
 
 summary(alerts)
-# {"total": 3914, "mtta_s": 492, "self_resolve_rate": 0.61, "flapping_rules": 4, "noisiest": [...]}
+# {"total": 3914, "mtta_s": 492, "mttr_s": 1830, "ack_rate": 0.39,
+#  "self_resolve_rate": 0.61, "flapping_rules": 4, "noisiest": [...]}
 
 for rec in recommendations(alerts):
     print(rec)
@@ -30,18 +31,29 @@ for rec in recommendations(alerts):
 # Demote or auto-close 'PodRestarted' — 460/498 self-resolved without ack.
 ```
 
+## CLI
+
+Installing the package adds an `alertfatigue` command — feed it a JSON array of alert records:
+
+```bash
+$ alertfatigue alerts.json                              # summary + recommendations
+$ pd-export | alertfatigue --json                       # machine-readable
+$ alertfatigue alerts.json --fail-on-recommendations    # exit 1 to gate CI
+```
+
 ## What it measures
 
 - **Noisiest rules** — simple volume ranking.
 - **Flapping** — rules that fire ≥ N times within a rolling window (rolling two-pointer, not just per-hour buckets).
-- **MTTA** — mean time to acknowledge across acked alerts.
+- **MTTA / MTTR** — mean time to acknowledge / resolve.
+- **Ack rate** — share of alerts a human actually acknowledged (engagement).
 - **Self-resolve rate** — share of alerts that resolved quickly and were *never acked*: the textbook definition of noise that paged someone for nothing.
 - **Recommendations** — concrete tuning actions (add hysteresis, demote/auto-close) per offending rule.
 
 ## Development
 
 ```bash
-python -m pytest -q   # 6 tests
+pip install -e .[dev] && python -m pytest -q   # 12 tests
 ```
 
 ## License

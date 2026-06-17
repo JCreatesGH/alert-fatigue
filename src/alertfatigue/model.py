@@ -42,9 +42,12 @@ def _dt(v: Any) -> Optional[datetime]:
 def load_alerts(records: List[Dict[str, Any]]) -> List[Alert]:
     out = []
     for r in records:
+        opened_at = _dt(r.get("opened_at") or r.get("ts"))
+        if opened_at is None:
+            continue   # an alert with no open time can't be placed on the timeline
         out.append(Alert(
             rule=r.get("rule", r.get("name", "unknown")),
-            opened_at=_dt(r.get("opened_at") or r.get("ts")),
+            opened_at=opened_at,
             resolved_at=_dt(r.get("resolved_at")),
             acked_at=_dt(r.get("acked_at")),
             severity=r.get("severity", "warning"),
