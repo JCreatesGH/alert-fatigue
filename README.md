@@ -43,17 +43,19 @@ $ alertfatigue alerts.json --fail-on-recommendations    # exit 1 to gate CI
 
 ## What it measures
 
+- **Per-rule noise score** — `rule_report()` ranks rules by signal quality, not raw volume: the score is the count of *unacknowledged* alerts, weighted up when they self-resolve, so a rule that fires often, is rarely acked, and clears on its own rises to the top.
+- **Severity inflation** — `severity_breakdown()` shows ack/self-resolve rates per severity, catching the "everything is critical" trap (most `critical` alerts self-resolving → numb to real pages).
 - **Noisiest rules** — simple volume ranking.
 - **Flapping** — rules that fire ≥ N times within a rolling window (rolling two-pointer, not just per-hour buckets).
 - **MTTA / MTTR** — mean time to acknowledge / resolve.
 - **Ack rate** — share of alerts a human actually acknowledged (engagement).
 - **Self-resolve rate** — share of alerts that resolved quickly and were *never acked*: the textbook definition of noise that paged someone for nothing.
-- **Recommendations** — concrete tuning actions (add hysteresis, demote/auto-close) per offending rule.
+- **Recommendations** — concrete tuning actions (add hysteresis, demote/auto-close, fix severity inflation) per offending rule.
 
 ## Development
 
 ```bash
-pip install -e .[dev] && python -m pytest -q   # 12 tests
+pip install -e .[dev] && python -m pytest -q   # 15 tests
 ```
 
 ## License

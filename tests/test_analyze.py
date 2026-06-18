@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from alertfatigue import (load_alerts, noisiest, flapping_rules, mtta, mttr,
-                          ack_rate, self_resolve_rate, recommendations, summary)
+                          ack_rate, self_resolve_rate, rule_report, severity_breakdown,
+                          recommendations, summary)
 
 BASE = datetime(2026, 6, 1, 0, 0, tzinfo=timezone.utc)
 
@@ -71,3 +72,38 @@ def test_load_alerts_skips_records_without_open_time():
         {"rule": "B"},                                 # no opened_at / ts -> skipped
     ])
     assert [a.rule for a in alerts] == ["A"]
+
+
+def test_rule_report_ranks_noisy_low_signal_rules_first():
+    alerts = load_alerts(
+        [make("Noise", i, resolved_min=i + 1) for i in range(10)]                  # 10× unacked, quick self-resolve
+        + [make("Real", i * 5, resolved_min=i * 5 + 30, acked_min=i * 5 + 1) for i in range(3)]  # acked, real
+    )
+    report = rule_report(alerts)
+    assert report[0].rule == "Noise"
+    noise = next(r for r in report if r.rule == "Noise")
+    real = next(r for r in report if r.rule == "Real")
+    assert noise.noise_score > real.noise_score
+    assert noise.ack_rate == 0.0 and noise.self_resolve_rate == 1.0
+    assert real.ack_rate == 1.0 and real.noise_score == 0.0
+
+
+def _sev(rule, mins, severity, resolved=True):
+    r = {"rule": rule, "opened_at": at(mins).isoformat(), "severity": severity}
+    if resolved:
+        r["resolved_at"] = at(mins).isoformat()   # instant, unacked -> self-resolved noise
+    return r
+
+
+def test_severity_breakdown_and_inflation_recommendation():
+    alerts = load_alerts([_sev("X", i, "critical") for i in range(4)])
+    sb = severity_breakdown(alerts)
+    assert sb["critical"]["count"] == 4
+    assert sb["critical"]["self_resolve_rate"] == 1.0
+    assert any("inflation" in r.lower() for r in recommendations(alerts))
+
+
+def test_summary_includes_severity_and_top_noise():
+    alerts = load_alerts([make("A", 0, acked_min=1), make("B", 5)])
+    s = summary(alerts)
+    assert "by_severity" in s and "top_noise" in s

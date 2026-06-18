@@ -1,8 +1,12 @@
 """Noise / flapping / MTTA analysis."""
 from __future__ import annotations
 from collections import Counter, defaultdict
-from typing import Dict, List
+from dataclasses import dataclass
+from typing import Dict, List, Optional
 from .model import Alert
+
+# Severities that should mean "wake someone up" — self-resolving ones here = inflation.
+_HIGH_SEVERITIES = {"critical", "page", "high", "p1", "sev1"}
 
 
 def noisiest(alerts: List[Alert], top: int = 10) -> List[tuple]:
@@ -58,6 +62,44 @@ def self_resolve_rate(alerts: List[Alert], quick_s: float = 300) -> float:
     return round(noise / len(alerts), 3)
 
 
+@dataclass
+class RuleStats:
+    rule: str
+    count: int
+    ack_rate: float
+    self_resolve_rate: float
+    mttr_s: float
+    noise_score: float        # higher = noisier / lower-signal
+
+
+def rule_report(alerts: List[Alert], top: Optional[int] = None) -> List[RuleStats]:
+    """Per-rule signal-quality report, worst (noisiest) first. The noise score is
+    the volume of *unacknowledged* alerts, weighted up when they self-resolve — so
+    a rule that fires often, is rarely acked, and clears on its own ranks highest."""
+    by_rule: Dict[str, List[Alert]] = defaultdict(list)
+    for a in alerts:
+        by_rule[a.rule].append(a)
+    out: List[RuleStats] = []
+    for rule, group in by_rule.items():
+        ar = ack_rate(group)
+        sr = self_resolve_rate(group)
+        score = round(len(group) * (1 - ar) * (0.5 + 0.5 * sr), 2)
+        out.append(RuleStats(rule, len(group), ar, sr, mttr(group), score))
+    out.sort(key=lambda r: (-r.noise_score, -r.count, r.rule))
+    return out[:top] if top is not None else out
+
+
+def severity_breakdown(alerts: List[Alert]) -> Dict[str, Dict[str, float]]:
+    """Per-severity counts plus ack/self-resolve rates — surfaces severity
+    inflation (e.g. 'critical' alerts that mostly self-resolve)."""
+    by_sev: Dict[str, List[Alert]] = defaultdict(list)
+    for a in alerts:
+        by_sev[a.severity].append(a)
+    return {sev: {"count": len(g), "ack_rate": ack_rate(g),
+                  "self_resolve_rate": self_resolve_rate(g)}
+            for sev, g in by_sev.items()}
+
+
 def recommendations(alerts: List[Alert]) -> List[str]:
     recs: List[str] = []
     flap = flapping_rules(alerts)
@@ -74,6 +116,12 @@ def recommendations(alerts: List[Alert]) -> List[str]:
         noise = by_rule_noise.get(rule, 0)
         if total >= 3 and noise / total >= 0.7:
             recs.append(f"Demote or auto-close '{rule}' — {noise}/{total} self-resolved without ack.")
+    # severity inflation: a high severity whose alerts mostly self-resolve isn't critical
+    for sev, stats in severity_breakdown(alerts).items():
+        if sev.lower() in _HIGH_SEVERITIES and stats["count"] >= 3 and stats["self_resolve_rate"] >= 0.5:
+            recs.append(
+                f"Severity inflation: {stats['self_resolve_rate']*100:.0f}% of '{sev}' alerts "
+                f"self-resolved without ack — downgrade the severity so real pages stand out.")
     return recs
 
 
@@ -87,4 +135,6 @@ def summary(alerts: List[Alert]) -> Dict[str, object]:
         "self_resolve_rate": self_resolve_rate(alerts),
         "flapping_rules": len(flapping_rules(alerts)),
         "noisiest": noisiest(alerts, 5),
+        "by_severity": severity_breakdown(alerts),
+        "top_noise": [(r.rule, r.noise_score) for r in rule_report(alerts, top=5)],
     }

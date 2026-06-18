@@ -6,7 +6,7 @@ import sys
 from typing import List, Optional
 
 from .model import load_alerts
-from .analyze import summary, recommendations
+from .analyze import summary, recommendations, rule_report, severity_breakdown
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -43,10 +43,17 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"  ack rate:          {s['ack_rate'] * 100:.1f}%")
         print(f"  self-resolve rate: {s['self_resolve_rate'] * 100:.1f}%")
         print(f"  flapping rules:    {s['flapping_rules']}")
-        if s["noisiest"]:
-            print("  noisiest:")
-            for rule, n in s["noisiest"]:
-                print(f"    {n:>4}  {rule}")
+        sev = severity_breakdown(alerts)
+        if sev:
+            print("  by severity:")
+            for name, st in sorted(sev.items(), key=lambda kv: -kv[1]["count"]):
+                print(f"    {st['count']:>4}  {name:<10} ({st['self_resolve_rate']*100:.0f}% self-resolved)")
+        report = rule_report(alerts, top=5)
+        if report:
+            print("  noisiest rules (by noise score):")
+            for r in report:
+                print(f"    {r.noise_score:>7.1f}  {r.rule}  "
+                      f"(×{r.count}, ack {r.ack_rate*100:.0f}%, self-resolve {r.self_resolve_rate*100:.0f}%)")
         if recs:
             print("\nRecommendations:")
             for r in recs:
