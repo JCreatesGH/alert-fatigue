@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "alertfatigue"
-version = "0.2.0"
-description = "Analyze alert history for noise, flapping, MTTA, per-rule noise scores, and severity inflation, with tuning recommendations."
+version = "0.3.0"
+description = "Analyze alert history for noise, flapping, MTTA, per-rule noise scores, severity inflation, and off-hours pages, with tuning recommendations."
 readme = "README.md"
 authors = [{ name = "Joshua John", email = "josh202@gmail.com" }]
 requires-python = ">=3.8"

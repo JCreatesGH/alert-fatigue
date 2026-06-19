@@ -42,6 +42,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"  MTTR:              {s['mttr_s']}s")
         print(f"  ack rate:          {s['ack_rate'] * 100:.1f}%")
         print(f"  self-resolve rate: {s['self_resolve_rate'] * 100:.1f}%")
+        print(f"  off-hours rate:    {s['off_hours_rate'] * 100:.1f}%")
         print(f"  flapping rules:    {s['flapping_rules']}")
         sev = severity_breakdown(alerts)
         if sev:

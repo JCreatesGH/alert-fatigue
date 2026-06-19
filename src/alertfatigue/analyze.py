@@ -89,6 +89,28 @@ def rule_report(alerts: List[Alert], top: Optional[int] = None) -> List[RuleStat
     return out[:top] if top is not None else out
 
 
+def off_hours_report(alerts: List[Alert], business_start: int = 9, business_end: int = 18,
+                     business_days=(0, 1, 2, 3, 4)) -> Dict[str, object]:
+    """Pages that fired outside business hours — the biggest on-call-burnout driver.
+    A page is *off-hours* when its weekday isn't in `business_days` (Mon=0 … Sun=6) or
+    its hour falls outside ``[business_start, business_end)``. Times use each alert's own
+    timestamp zone (no conversion), so feed timestamps already in the on-call team's zone."""
+    days = set(business_days)
+
+    def is_off(a: Alert) -> bool:
+        t = a.opened_at
+        return t.weekday() not in days or t.hour < business_start or t.hour >= business_end
+
+    off = [a for a in alerts if is_off(a)]
+    total = len(alerts)
+    return {
+        "total": total,
+        "off_hours": len(off),
+        "off_hours_rate": round(len(off) / total, 3) if total else 0.0,
+        "by_rule": Counter(a.rule for a in off).most_common(),
+    }
+
+
 def severity_breakdown(alerts: List[Alert]) -> Dict[str, Dict[str, float]]:
     """Per-severity counts plus ack/self-resolve rates — surfaces severity
     inflation (e.g. 'critical' alerts that mostly self-resolve)."""
@@ -116,6 +138,13 @@ def recommendations(alerts: List[Alert]) -> List[str]:
         noise = by_rule_noise.get(rule, 0)
         if total >= 3 and noise / total >= 0.7:
             recs.append(f"Demote or auto-close '{rule}' — {noise}/{total} self-resolved without ack.")
+    # off-hours offenders: rules that mostly page outside business hours
+    oh_by_rule = dict(off_hours_report(alerts)["by_rule"])
+    for rule, total in by_rule_total.items():
+        off_n = oh_by_rule.get(rule, 0)
+        if off_n >= 3 and total and off_n / total >= 0.5:
+            recs.append(f"'{rule}' pages mostly off-hours ({off_n}/{total}) — route it to a "
+                        f"low-urgency queue or business-hours-only schedule to protect on-call rest.")
     # severity inflation: a high severity whose alerts mostly self-resolve isn't critical
     for sev, stats in severity_breakdown(alerts).items():
         if sev.lower() in _HIGH_SEVERITIES and stats["count"] >= 3 and stats["self_resolve_rate"] >= 0.5:
@@ -134,6 +163,7 @@ def summary(alerts: List[Alert]) -> Dict[str, object]:
         "ack_rate": ack_rate(alerts),
         "self_resolve_rate": self_resolve_rate(alerts),
         "flapping_rules": len(flapping_rules(alerts)),
+        "off_hours_rate": off_hours_report(alerts)["off_hours_rate"],
         "noisiest": noisiest(alerts, 5),
         "by_severity": severity_breakdown(alerts),
         "top_noise": [(r.rule, r.noise_score) for r in rule_report(alerts, top=5)],

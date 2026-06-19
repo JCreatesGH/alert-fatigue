@@ -3,6 +3,15 @@
 All notable changes are documented here, following
 [Keep a Changelog](https://keepachangelog.com/) and [SemVer](https://semver.org/).
 
+## [0.3.0]
+
+### Added
+- **Off-hours page analysis** — `off_hours_report()` measures how many pages fired outside
+  business hours (default 09:00–18:00, Mon–Fri, configurable) and ranks the worst offending
+  rules — the biggest on-call-burnout driver. `summary()` gains `off_hours_rate` and the CLI
+  shows it; `recommendations()` flags rules that page mostly off-hours for re-routing.
+  Times use each alert's own timestamp zone (no conversion — zero dependencies, 3.8-safe).
+
 ## [0.2.0]
 
 ### Added

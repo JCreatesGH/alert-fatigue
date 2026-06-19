@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from alertfatigue import (load_alerts, noisiest, flapping_rules, mtta, mttr,
                           ack_rate, self_resolve_rate, rule_report, severity_breakdown,
-                          recommendations, summary)
+                          off_hours_report, recommendations, summary)
 
 BASE = datetime(2026, 6, 1, 0, 0, tzinfo=timezone.utc)
 
@@ -107,3 +107,33 @@ def test_summary_includes_severity_and_top_noise():
     alerts = load_alerts([make("A", 0, acked_min=1), make("B", 5)])
     s = summary(alerts)
     assert "by_severity" in s and "top_noise" in s
+    assert "off_hours_rate" in s
+
+
+def test_off_hours_report():
+    # 2026-06-01 is a Monday; 2026-06-06 is a Saturday
+    alerts = load_alerts([
+        {"rule": "A", "opened_at": "2026-06-01T03:00:00Z"},   # Mon 03:00 -> off (too early)
+        {"rule": "A", "opened_at": "2026-06-01T14:00:00Z"},   # Mon 14:00 -> business hours
+        {"rule": "A", "opened_at": "2026-06-01T20:00:00Z"},   # Mon 20:00 -> off (too late)
+        {"rule": "B", "opened_at": "2026-06-06T14:00:00Z"},   # Sat 14:00 -> off (weekend)
+    ])
+    rep = off_hours_report(alerts)
+    assert rep["total"] == 4
+    assert rep["off_hours"] == 3 and rep["off_hours_rate"] == 0.75
+    by_rule = dict(rep["by_rule"])
+    assert by_rule["A"] == 2 and by_rule["B"] == 1
+
+
+def test_off_hours_recommendation():
+    # a rule that fires only off-hours (nights) -> should be recommended for re-routing
+    recs = recommendations(load_alerts([
+        {"rule": "NightlyBackupNoise", "opened_at": f"2026-06-0{d}T02:00:00Z"} for d in (1, 2, 3, 4)
+    ]))
+    assert any("off-hours" in r for r in recs)
+
+
+def test_off_hours_respects_business_window():
+    alerts = load_alerts([{"rule": "A", "opened_at": "2026-06-01T08:00:00Z"}])  # Mon 08:00
+    assert off_hours_report(alerts)["off_hours"] == 1                       # before default 9:00
+    assert off_hours_report(alerts, business_start=7)["off_hours"] == 0     # widen window -> in-hours
